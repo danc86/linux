@@ -113,6 +113,8 @@
 
 #define AFBC_TILE_16x16		BIT(4)
 
+#define AFBC_MAX_WIDTH		2560
+
 /*
  * The coefficients of the following matrix are all fixed points.
  * The format is S2.10 for the 3x3 part of the matrix, and S9.12 for the offsets.
@@ -866,6 +868,13 @@ static int vop_plane_atomic_check(struct drm_plane *plane,
 		if (new_plane_state->rotation && new_plane_state->rotation != DRM_MODE_ROTATE_0) {
 			DRM_DEBUG_KMS("No rotation support in AFBC, rotation=%d\n",
 				      new_plane_state->rotation);
+			return -EINVAL;
+		}
+
+		if (drm_rect_width(&new_plane_state->dst) > AFBC_MAX_WIDTH) {
+			DRM_DEBUG_KMS("AFBC not supported for width %d (max %d)\n",
+				      drm_rect_width(&new_plane_state->dst),
+				      AFBC_MAX_WIDTH);
 			return -EINVAL;
 		}
 	}
