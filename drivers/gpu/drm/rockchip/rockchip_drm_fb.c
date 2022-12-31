@@ -18,6 +18,8 @@
 #include "rockchip_drm_fb.h"
 #include "rockchip_drm_gem.h"
 
+#define ROCKCHIP_MAX_AFBC_WIDTH	2560
+
 static const struct drm_framebuffer_funcs rockchip_drm_fb_funcs = {
 	.destroy       = drm_gem_fb_destroy,
 	.create_handle = drm_gem_fb_create_handle,
@@ -34,7 +36,7 @@ rockchip_fb_create(struct drm_device *dev, struct drm_file *file,
 {
 	struct drm_afbc_framebuffer *afbc_fb;
 	const struct drm_format_info *info;
-	int ret;
+	int ret, i;
 
 	info = drm_get_format_info(dev, mode_cmd);
 	if (!info)
@@ -46,27 +48,29 @@ rockchip_fb_create(struct drm_device *dev, struct drm_file *file,
 
 	ret = drm_gem_fb_init_with_funcs(dev, &afbc_fb->base, file, mode_cmd,
 					 &rockchip_drm_fb_funcs);
-	if (ret) {
-		kfree(afbc_fb);
-		return ERR_PTR(ret);
-	}
+	if (ret)
+		goto err_free;
 
 	if (drm_is_afbc(mode_cmd->modifier[0])) {
-		int ret, i;
+		if (afbc_fb->aligned_width > ROCKCHIP_MAX_AFBC_WIDTH) {
+			DRM_ERROR("Unsupported width %d>%d\n", afbc_fb->aligned_width, ROCKCHIP_MAX_AFBC_WIDTH);
+			ret = -EINVAL;
+			goto err_cleanup;
+		}
 
 		ret = drm_gem_fb_afbc_init(dev, mode_cmd, afbc_fb);
-		if (ret) {
-			struct drm_gem_object **obj = afbc_fb->base.obj;
-
-			for (i = 0; i < info->num_planes; ++i)
-				drm_gem_object_put(obj[i]);
-
-			kfree(afbc_fb);
-			return ERR_PTR(ret);
-		}
+		if (ret)
+			goto err_cleanup;
 	}
 
 	return &afbc_fb->base;
+
+err_cleanup:
+	for (i = 0; i < info->num_planes; ++i)
+		drm_gem_object_put(afbc_fb->base.obj[i]);
+err_free:
+	kfree(afbc_fb);
+	return ERR_PTR(ret);
 }
 
 static const struct drm_mode_config_funcs rockchip_drm_mode_config_funcs = {
